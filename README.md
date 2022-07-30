@@ -6,4 +6,3 @@ Usage:
 ```shell
 command | rotate-puts
 ```
-

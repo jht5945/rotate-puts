@@ -3,13 +3,29 @@ use std::io::{BufWriter, Read, Write};
 use std::process::exit;
 use std::time::Duration;
 
+use clap::{App, AppSettings, Arg};
+
 fn main() {
+    let app = App::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .long_about("Rotate standard in to log files")
+        .arg(Arg::with_name("prefix")
+            .long("prefix").takes_value(true).default_value("temp").help("Log file prefix"))
+        .arg(Arg::with_name("suffix")
+            .long("suffix").takes_value(true).default_value("log").help("Log file suffix"))
+        .setting(AppSettings::ColoredHelp);
+
+    let arg_matchers = app.get_matches();
+    let prefix = arg_matchers.value_of("prefix").unwrap().to_string();
+    let suffix = arg_matchers.value_of("suffix").unwrap().to_string();
+
     let (sender, receiver) = std::sync::mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         let mut file_index = 0;
         let mut written_len = 0;
 
-        let file_name = make_new_file_name("temp", &mut file_index);
+        let file_name = make_new_file_name(&prefix, &suffix, &mut file_index);
         let mut out_file = BufWriter::new(File::create(&file_name)
             .expect(&format!("Create file failed: {}", file_name)));
 
@@ -44,8 +60,7 @@ fn main() {
 
                             if written_len >= 10 * 1024 * 1024 {
                                 written_len = 0;
-                                let file_name = make_new_file_name("temp", &mut file_index);
-                                println!("new file: {}", file_name);
+                                let file_name = make_new_file_name(&prefix, &suffix, &mut file_index);
                                 out_file = BufWriter::new(File::create(&file_name)
                                     .expect(&format!("Create file failed: {}", file_name)));
                             }
@@ -77,14 +92,25 @@ fn main() {
     }
 }
 
-fn make_new_file_name(prefix: &str, index: &mut i32) -> String {
+fn make_new_file_name(prefix: &str, suffix: &str, index: &mut i32) -> String {
     let i = *index;
     *index = i + 1;
 
-    let pending_rm = format!("{}_{:03}.log", prefix, i - 10);
+    let pending_rm = generate_file_name(prefix, suffix, i - 10);
     if let Ok(_) = std::fs::metadata(&pending_rm) {
+        println!("[INFO] Remove log file: {}", &pending_rm);
         std::fs::remove_file(&pending_rm).ok();
     }
 
-    format!("{}_{:03}.log", prefix, i)
+    let file_name = generate_file_name(prefix, suffix, i);
+    println!("[INFO] New log file: {}", &file_name);
+    file_name
+}
+
+fn generate_file_name(prefix: &str, suffix: &str, index: i32) -> String {
+    format!("{}_{:03}{}", prefix, index, if suffix.is_empty() {
+        "".to_string()
+    } else {
+        ".".to_string() + suffix
+    })
 }
