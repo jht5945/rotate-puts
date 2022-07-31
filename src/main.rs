@@ -4,6 +4,7 @@ use std::process::exit;
 use std::time::Duration;
 
 use clap::{App, AppSettings, Arg};
+use rust_util::{iff, information, util_size};
 
 fn main() {
     let app = App::new(env!("CARGO_PKG_NAME"))
@@ -14,18 +15,38 @@ fn main() {
             .long("prefix").takes_value(true).default_value("temp").help("Log file prefix"))
         .arg(Arg::with_name("suffix")
             .long("suffix").takes_value(true).default_value("log").help("Log file suffix"))
+        .arg(Arg::with_name("file-size")
+            .long("file-size").takes_value(true).default_value("10m").help("Single log file size"))
+        .arg(Arg::with_name("file-count")
+            .long("file-count").takes_value(true).default_value("10").help("Keep file count (from 0 to 1000)"))
         .setting(AppSettings::ColoredHelp);
 
     let arg_matchers = app.get_matches();
     let prefix = arg_matchers.value_of("prefix").unwrap().to_string();
     let suffix = arg_matchers.value_of("suffix").unwrap().to_string();
+    let file_size = arg_matchers.value_of("file-size").unwrap();
+    let file_size = util_size::parse_size(file_size).unwrap_or_else(|_| 10 * 1024 * 1028) as usize;
+    let file_count = arg_matchers.value_of("file-count").unwrap();
+    let file_count = file_count.parse().unwrap_or_else(|_| 10);
+    let file_count = match file_count {
+        i if i < 0 => {
+            0
+        }
+        i if i > 1000 => {
+            1000
+        }
+        i => i as i32,
+    };
 
+    information!("Prefix: {}, suffix: {}, file size: {}, file count: {}",
+        prefix, suffix, util_size::get_display_size(file_size as i64), file_count
+    );
     let (sender, receiver) = std::sync::mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         let mut file_index = 0;
         let mut written_len = 0;
 
-        let file_name = make_new_file_name(&prefix, &suffix, &mut file_index);
+        let file_name = make_new_file_name(&prefix, &suffix, file_count, &mut file_index);
         let mut out_file = BufWriter::new(File::create(&file_name)
             .expect(&format!("Create file failed: {}", file_name)));
 
@@ -58,9 +79,9 @@ fn main() {
                             write_buffer = left_buffer;
                             out_file.flush().ok();
 
-                            if written_len >= 10 * 1024 * 1024 {
+                            if written_len >= file_size {
                                 written_len = 0;
-                                let file_name = make_new_file_name(&prefix, &suffix, &mut file_index);
+                                let file_name = make_new_file_name(&prefix, &suffix, file_count, &mut file_index);
                                 out_file = BufWriter::new(File::create(&file_name)
                                     .expect(&format!("Create file failed: {}", file_name)));
                             }
@@ -92,11 +113,11 @@ fn main() {
     }
 }
 
-fn make_new_file_name(prefix: &str, suffix: &str, index: &mut i32) -> String {
+fn make_new_file_name(prefix: &str, suffix: &str, file_count: i32, index: &mut i32) -> String {
     let i = *index;
     *index = i + 1;
 
-    let pending_rm = generate_file_name(prefix, suffix, i - 10);
+    let pending_rm = generate_file_name(prefix, suffix, i - file_count);
     if let Ok(_) = std::fs::metadata(&pending_rm) {
         println!("[INFO] Remove log file: {}", &pending_rm);
         std::fs::remove_file(&pending_rm).ok();
@@ -108,9 +129,5 @@ fn make_new_file_name(prefix: &str, suffix: &str, index: &mut i32) -> String {
 }
 
 fn generate_file_name(prefix: &str, suffix: &str, index: i32) -> String {
-    format!("{}_{:03}{}", prefix, index, if suffix.is_empty() {
-        "".to_string()
-    } else {
-        ".".to_string() + suffix
-    })
+    format!("{}_{:03}{}{}", prefix, index, iff!(suffix.is_empty(), "", "."), suffix)
 }
