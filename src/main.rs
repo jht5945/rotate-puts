@@ -28,15 +28,11 @@ fn main() {
     let file_size = util_size::parse_size(file_size).unwrap_or_else(|_| 10 * 1024 * 1028) as usize;
     let file_count = arg_matchers.value_of("file-count").unwrap();
     let file_count = file_count.parse().unwrap_or_else(|_| 10);
-    let file_count = match file_count {
-        i if i < 0 => {
-            0
-        }
-        i if i > 1000 => {
-            1000
-        }
-        i => i as i32,
-    };
+    let file_count = if file_count < 0 {
+        0
+    } else if file_count > 1000 {
+        1000
+    } else { file_count as i32 };
 
     information!("Prefix: {}, suffix: {}, file size: {}, file count: {}",
         prefix, suffix, util_size::get_display_size(file_size as i64), file_count
