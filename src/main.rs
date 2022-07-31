@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::process::exit;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use clap::{App, AppSettings, Arg};
 use rust_util::{iff, information, util_size};
@@ -50,41 +50,55 @@ fn main() {
         let mut out_file = BufWriter::new(File::create(&file_name)
             .expect(&format!("Create file failed: {}", file_name)));
 
+        let mut last_write_time = SystemTime::now();
         let mut write_buffer = Vec::with_capacity(1024 * 8);
         loop {
             match receiver.recv_timeout(Duration::from_secs(1)) {
                 Err(_e) => {
-                    if write_buffer.len() > 0 {
+                    let should_flush_to_file = match SystemTime::now().duration_since(last_write_time) {
+                        Ok(d) => d.as_millis() >= 1000,
+                        Err(_) => false,
+                    };
+                    if should_flush_to_file && !write_buffer.is_empty() {
                         written_len += write_buffer.len();
                         out_file.write(&write_buffer).ok();
                         write_buffer.clear();
                     }
                 }
                 Ok(buff) => {
-                    if buff.len() == 0 {
+                    if buff.is_empty() {
                         out_file.write(&write_buffer).ok();
                         out_file.flush().ok();
                         exit(0);
                     }
                     write_buffer.extend_from_slice(&buff);
-                    if write_buffer.len() > 1024 {
-                        let mut pos_of_n = -1_isize;
+                    let contains_new_line = write_buffer.iter().any(|c| *c == b'\n');
+                    if write_buffer.len() > 4 * 1024 || contains_new_line {
+                        let mut pos_of_n: Option<usize> = None;
                         write_buffer.iter().enumerate().for_each(|(i, c)| {
-                            if *c == b'\n' { pos_of_n = i as isize; }
+                            if *c == b'\n' { pos_of_n = Some(i); }
                         });
-                        if pos_of_n > -1 {
-                            let left_buffer = write_buffer.split_off(pos_of_n as usize + 1);
-                            written_len += write_buffer.len();
-                            out_file.write(&write_buffer).ok();
-                            write_buffer = left_buffer;
-                            out_file.flush().ok();
-
-                            if written_len >= file_size {
-                                written_len = 0;
-                                let file_name = make_new_file_name(&prefix, &suffix, file_count, &mut file_index);
-                                out_file = BufWriter::new(File::create(&file_name)
-                                    .expect(&format!("Create file failed: {}", file_name)));
+                        match pos_of_n {
+                            None => {
+                                written_len += write_buffer.len();
+                                out_file.write(&write_buffer).ok();
+                                write_buffer.clear();
                             }
+                            Some(pos_of_n) => {
+                                let left_buffer = write_buffer.split_off(pos_of_n + 1);
+                                written_len += write_buffer.len();
+                                out_file.write(&write_buffer).ok();
+                                write_buffer = left_buffer;
+                            }
+                        }
+                        out_file.flush().ok();
+                        last_write_time = SystemTime::now();
+
+                        if written_len >= file_size {
+                            written_len = 0;
+                            let file_name = make_new_file_name(&prefix, &suffix, file_count, &mut file_index);
+                            out_file = BufWriter::new(File::create(&file_name)
+                                .expect(&format!("Create file failed: {}", file_name)));
                         }
                     }
                 }
@@ -101,9 +115,7 @@ fn main() {
             }
             Ok(len) => {
                 let mut vec = Vec::with_capacity(len);
-                for b in &buff[0..len] {
-                    vec.push(*b);
-                }
+                vec.extend_from_slice(&buff[0..len]);
                 if let Err(e) = sender.send(vec) {
                     eprintln!("[ERROR] Send error: {}", e);
                 }
