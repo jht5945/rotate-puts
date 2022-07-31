@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "rotate-puts"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "rust_util",

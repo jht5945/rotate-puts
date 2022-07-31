@@ -1,6 +1,6 @@
 [package]
 name = "rotate-puts"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,3 +8,9 @@ edition = "2021"
 [dependencies]
 clap = "2.33"
 rust_util = "0.6.41"
+
+[profile.release]
+codegen-units = 1
+opt-level = 'z'
+lto = true
+panic = 'abort'
