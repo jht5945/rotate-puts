@@ -19,6 +19,8 @@ fn main() {
             .long("file-size").takes_value(true).default_value("10m").help("Single log file size"))
         .arg(Arg::with_name("file-count")
             .long("file-count").takes_value(true).default_value("10").help("Keep file count (from 0 to 1000)"))
+        .arg(Arg::with_name("file")
+            .long("file").takes_value(true).required(false).help("Read from file, default stdin"))
         .setting(AppSettings::ColoredHelp);
 
     let arg_matchers = app.get_matches();
@@ -102,10 +104,17 @@ fn main() {
         }
     });
 
-    let mut std_in = std::io::stdin();
+    let file_opt = arg_matchers.value_of("file");
+    let mut read_in: Box<dyn Read> = if let Some(file) = file_opt {
+        let file_read = File::open(file).expect("Open file failed!");
+        Box::new(file_read)
+    } else {
+        Box::new(std::io::stdin())
+    };
+
     let mut buff = [0_u8; 128];
     loop {
-        match std_in.read(&mut buff) {
+        match read_in.read(&mut buff) {
             Ok(len) if len == 0 => {
                 sender.send(Vec::new()).ok();
             }
