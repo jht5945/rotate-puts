@@ -2,8 +2,12 @@
 name = "rotate-puts"
 version = "0.2.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Hatter Jiang"]
+repository = "https://git.hatter.ink/hatter/rotate-puts"
+description = "Rotate outputs to files"
+license = "MIT OR Apache-2.0"
+keywords = ["log", "rotate"]
+categories = ["log"]
 
 [dependencies]
 clap = "2.33"
