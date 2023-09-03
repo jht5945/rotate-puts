@@ -19,6 +19,6 @@ command > test-fifo
 Run as daemon:
 
 ```shell
-rotate-put --file test-fifo --daemon [--continue-read]
+rotate-put --file test-fifo --daemon --iden test [--continue-read]
 ```
 
